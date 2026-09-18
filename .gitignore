@@ -1,0 +1,34 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Datos del usuario (GPX, CSV subidos)
+data/input/*
+data/output/*
+data/cache/*
+!data/input/.gitkeep
+!data/output/.gitkeep
+!data/cache/.gitkeep
+
+# Modelos descargados
+models/*.gguf
+
+# Entorno
+.env
+
+# OS
+.DS_Store
+Thumbs.db
