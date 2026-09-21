@@ -3,7 +3,6 @@ src/llm/llm_client.py
 Conexión con Ollama vía Instructor para obtener JSON estructurado.
 """
 
-
 from __future__ import annotations
 
 import os
@@ -23,14 +22,12 @@ def obtener_client() -> instructor.Instructor:
     """
     base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-
-
     # Ollama expone una API compatible con OpenAI en /v1
     openai_client = OpenAI(
         base_url=f"{base_url}/v1",
         api_key="ollama",  # Ollama no requiere API key real
+        timeout=600.0,  # ← 10 minutos (antes: 60s por defecto)
     )
-
 
     # Instructor envuelve el cliente para forzar salida JSON válida
     client = instructor.from_openai(
@@ -38,10 +35,7 @@ def obtener_client() -> instructor.Instructor:
         mode=instructor.Mode.JSON,
     )
 
-
     return client
-
-
 
 
 def generar_resumen_ciclista(resumen_ruta: ResumenRuta) -> ResumenCiclista:
@@ -63,24 +57,20 @@ def generar_resumen_ciclista(resumen_ruta: ResumenRuta) -> ResumenCiclista:
     client = obtener_client()
     model = os.getenv("OLLAMA_MODEL", "qwen2.5:14b-instruct")
 
-
     user_prompt = construir_user_prompt(resumen_ruta)
-
 
     print(f"\n🤖 Consultando al LLM ({model})...")
     print("   Esto puede tardar 30-90 segundos la primera vez...")
 
-
     result: ResumenCiclista = client.chat.completions.create(
         model=model,
         response_model=ResumenCiclista,
-        max_retries=3,  # Reintenta hasta 3 veces si el JSON no es válido
+        max_retries=5,  # Reintenta hasta 5 veces si el JSON no es válido
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
     )
-
 
     print("   ✅ Respuesta del LLM recibida y validada.")
     return result
