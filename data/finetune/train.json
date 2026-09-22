@@ -1,0 +1,28 @@
+[{
+    "messages": 
+        [
+            {
+                "role": "user", 
+                "content": "## DATOS GENERALES...\n- Distancia: 80 km\n- Puerto: Alto de X, km 30-45, 800m+, 7%\n..."
+            }, 
+            {
+                "role": "assistant", 
+                "content": "{\"titulo_ruta\": \"...\", \"puertos\": [...], ...}"
+            }
+        ]
+},
+
+{
+    "messages": 
+        [
+            {
+                "role": "user", 
+                "content": "..."
+            }, 
+            {
+                "role": "assistant", 
+                "content": "{...}"
+            }
+        ]
+}
+]
