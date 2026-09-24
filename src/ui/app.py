@@ -14,15 +14,19 @@ import sys
 import streamlit as st
 
 # Asegurar que el proyecto está en el path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+)
 
 from dotenv import load_dotenv
 
 from src.gis.csv_parser import parse_csv_cuesheet
 from src.gis.elevation import analizar_elevacion, detectar_puertos
+from src.gis.elevation_filler import elevaciones_faltan, rellenar_elevacion
 from src.gis.geocoder import detectar_localidades
-from src.gis.gpx_parser import parse_gpx_route, parse_gpx_track
-from src.gis.models import ResumenRuta
+from src.gis.gpx_route_parser import parse_gpx_route
+from src.gis.gpx_track_parser import parse_gpx_track
+from src.gis.models import ResumenRuta, TrackPoint
 from src.gis.poi_finder import buscar_abastecimientos
 from src.llm.llm_client import generar_resumen_ciclista
 from src.ui.components import (
@@ -33,6 +37,64 @@ from src.ui.components import (
 )
 
 load_dotenv()
+
+
+# ──────────────────────────────────────────────
+#  Funciones cacheadas
+# ──────────────────────────────────────────────
+@st.cache_data(show_spinner="Procesando ficheros...")
+def _parsear_track(path: str) -> tuple:
+    """Parsea el GPX track con caché."""
+    return parse_gpx_track(path)
+
+
+@st.cache_data(show_spinner="Procesando ficheros...")
+def _parsear_route(path: str) -> tuple:
+    """Parsea el GPX route con caché."""
+    return parse_gpx_route(path)
+
+
+@st.cache_data(show_spinner="Procesando ficheros...")
+def _parsear_cuesheet(path: str) -> list:
+    """Parsea el CSV cuesheet con caché."""
+    return parse_csv_cuesheet(path)
+
+
+@st.cache_data(show_spinner="Consultando OpenStreetMap...")
+def _geocodificar_y_pois(
+    coords: tuple,
+    intervalo_geo: float,
+    intervalo_abas: float,
+) -> tuple[list, list]:
+    """
+    Geocoding + POIs con caché.
+    Solo consulta OpenStreetMap si cambian las coordenadas
+    o los intervalos. El resto de veces devuelve caché.
+    """
+    puntos = [
+        TrackPoint(lat=c[0], lon=c[1], ele=c[2], dist_km=c[3])
+        for c in coords
+    ]
+    localidades = detectar_localidades(puntos, intervalo_km=intervalo_geo)
+    abastecimientos = buscar_abastecimientos(
+        puntos, localidades, intervalo_km=intervalo_abas
+    )
+    return localidades, abastecimientos
+
+
+@st.cache_data(show_spinner="Rellenando elevación con Open-Meteo...")
+def _rellenar_elevacion_cacheado(coords: tuple) -> tuple:
+    """
+    Rellena elevaciones faltantes con caché.
+    Devuelve tupla de (lat, lon, ele, dist_km) ya rellenada.
+    """
+    puntos = [
+        TrackPoint(lat=c[0], lon=c[1], ele=c[2], dist_km=c[3])
+        for c in coords
+    ]
+    puntos = rellenar_elevacion(puntos)
+    return tuple((p.lat, p.lon, p.ele, p.dist_km) for p in puntos)
+
 
 # ──────────────────────────────────────────────
 #  Configuración de la página
@@ -94,10 +156,9 @@ if tab == "Ficheros locales":
 
     st.info(f"📂 Leyendo desde: `{input_dir}`")
 
-    with st.spinner("Procesando ficheros..."):
-        nombre_track, puntos_track = parse_gpx_track(track_file)
-        nombre_route, puntos_route = parse_gpx_route(route_file)
-        cuesheet = parse_csv_cuesheet(csv_file)
+    nombre_track, puntos_track = _parsear_track(track_file)
+    nombre_route, puntos_route = _parsear_route(route_file)
+    cuesheet = _parsear_cuesheet(csv_file)
 
 elif tab == "Subir ficheros":
     st.subheader("📤 Sube tus ficheros")
@@ -144,6 +205,28 @@ elif tab == "Subir ficheros":
         else:
             cuesheet = []
 
+# ── Guard: el GPX debe tener puntos ──
+if not puntos_track:
+    st.error("⚠️ El GPX no contiene puntos válidos. Revisa el fichero.")
+    st.stop()
+
+# ──────────────────────────────────────────────
+#  Relleno de elevación si el GPX no la trae
+# ──────────────────────────────────────────────
+if elevaciones_faltan(puntos_track):
+    st.warning(
+        "⚠️ El GPX no incluye elevación. Se consultará Open-Meteo "
+        "para rellenar el perfil."
+    )
+    coords_sin_ele = tuple(
+        (p.lat, p.lon, p.ele, p.dist_km) for p in puntos_track
+    )
+    coords_rellenos = _rellenar_elevacion_cacheado(coords_sin_ele)
+    puntos_track = [
+        TrackPoint(lat=c[0], lon=c[1], ele=c[2], dist_km=c[3])
+        for c in coords_rellenos
+    ]
+
 # ──────────────────────────────────────────────
 #  Pipeline GIS
 # ──────────────────────────────────────────────
@@ -165,21 +248,20 @@ col4.metric("🏔️ Ele. máx", f"{stats['ele_max']:.0f} m")
 mostrar_perfil_elevacion(puntos_track, puertos)
 
 # ──────────────────────────────────────────────
-#  Geocoding y POIs (opcional, requiere internet)
+#  Geocoding y POIs (cacheado)
 # ──────────────────────────────────────────────
-with st.expander("🏘️ Detectar localidades y abastecimientos (requiere internet)"):
-    with st.spinner("Consultando OpenStreetMap..."):
-        localidades = detectar_localidades(puntos_track, intervalo_km=intervalo_geocoding)
-        abastecimientos = buscar_abastecimientos(
-            puntos_track, localidades, intervalo_km=intervalo_abastecimiento
-        )
-    st.write(f"Localidades: {len(localidades)} | Abastecimientos: {len(abastecimientos)}")
+coords = tuple((p.lat, p.lon, p.ele, p.dist_km) for p in puntos_track)
 
-# Si no se expandió, usar listas vacías
-if "localidades" not in dir():
-    localidades = []
-if "abastecimientos" not in dir():
-    abastecimientos = []
+with st.expander(
+    "🏘️ Detectar localidades y abastecimientos (requiere internet)"
+):
+    localidades, abastecimientos = _geocodificar_y_pois(
+        coords, intervalo_geocoding, intervalo_abastecimiento
+    )
+    st.write(
+        f"Localidades: {len(localidades)} | "
+        f"Abastecimientos: {len(abastecimientos)}"
+    )
 
 # Mapa
 mostrar_mapa(puntos_track, puertos, localidades)
@@ -217,7 +299,9 @@ resumen_ruta = ResumenRuta(
 st.divider()
 st.subheader("🤖 Libro de Ruta (LLM)")
 
-if st.button("🚀 Generar Libro de Ruta", type="primary", use_container_width=True):
+if st.button(
+    "🚀 Generar Libro de Ruta", type="primary", width="stretch"
+):
     with st.spinner("Consultando al LLM... (puede tardar 5-30 segundos)"):
         try:
             resumen_ciclista = generar_resumen_ciclista(resumen_ruta)

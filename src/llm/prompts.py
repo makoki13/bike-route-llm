@@ -1,6 +1,7 @@
 """
 src/llm/prompts.py
 System Prompt y construcción del contexto para el LLM.
+Incluye compactación para respetar límites de tokens de la API.
 """
 
 from __future__ import annotations
@@ -49,10 +50,31 @@ CONSEJOS DE PUERTO POR CATEGORÍA:
 """
 
 
+# ──────────────────────────────────────────────
+#  Límites de compactación (para no exceder tokens de la API)
+# ──────────────────────────────────────────────
+MAX_LOCALIDADES = 12
+MAX_CAMBIOS_CARRETERA = 20
+MAX_CUESHEET = 60
+MAX_LONG_DESCRIPCION = 90
+
+# Tipos de cuesheet que aportan valor al libro de ruta.
+# Se descartan los "recto" porque ocupan mucho y aportan poco.
+TIPOS_CUESHEET_RELEVANTES = {
+    "salida",
+    "meta",
+    "cambio_carretera",
+    "giro_izquierda",
+    "giro_derecha",
+    "rotonda",
+    "cambio_sentido",
+}
+
+
 def construir_contexto(resumen: ResumenRuta) -> str:  # noqa: C901
     """
     Convierte el objeto ResumenRuta (datos GIS procesados)
-    en un texto estructurado que el LLM pueda interpretar.
+    en un texto estructurado y COMPACTO que el LLM pueda interpretar.
     """
     lineas: list[str] = []
 
@@ -83,12 +105,16 @@ def construir_contexto(resumen: ResumenRuta) -> str:  # noqa: C901
     else:
         lineas.append("- No se han detectado puertos de montaña.")
 
-    # ── Localidades ──
+    # ── Localidades (compactadas) ──
     lineas.append("\n## LOCALIDADES DE PASO")
     if resumen.localidades:
-        for loc in resumen.localidades:
+        for loc in resumen.localidades[:MAX_LOCALIDADES]:
             servicios = ", ".join(loc.servicios) if loc.servicios else "sin datos"
             lineas.append(f"- {loc.nombre} (km {loc.km:.1f}) [{servicios}]")
+        if len(resumen.localidades) > MAX_LOCALIDADES:
+            lineas.append(
+                f"- ... y {len(resumen.localidades) - MAX_LOCALIDADES} más"
+            )
     else:
         lineas.append("- No se han detectado localidades.")
 
@@ -100,23 +126,41 @@ def construir_contexto(resumen: ResumenRuta) -> str:  # noqa: C901
     else:
         lineas.append("- No se han encontrado puntos de abastecimiento aislados.")
 
-    # ── Cambios de carretera ──
+    # ── Cambios de carretera (compactados) ──
     lineas.append("\n## CAMBIOS DE CARRETERA")
     if resumen.cambios_carretera:
-        for cc in resumen.cambios_carretera:
+        for cc in resumen.cambios_carretera[:MAX_CAMBIOS_CARRETERA]:
             lineas.append(f"- {cc}")
+        if len(resumen.cambios_carretera) > MAX_CAMBIOS_CARRETERA:
+            lineas.append(
+                f"- ... y {len(resumen.cambios_carretera) - MAX_CAMBIOS_CARRETERA} más"
+            )
     else:
         lineas.append("- No hay cambios de carretera registrados.")
 
-    # ── Cuesheet (instrucciones de navegación) ──
+    # ── Cuesheet COMPACTO ──
     lineas.append("\n## CUESHEET (INSTRUCCIONES DE NAVEGACIÓN)")
-    if resumen.cuesheet:
-        for c in resumen.cuesheet:
+    entradas = [
+        c
+        for c in resumen.cuesheet
+        if c.tipo in TIPOS_CUESHEET_RELEVANTES
+        or (c.carretera and c.tipo != "recto")
+    ][:MAX_CUESHEET]
+
+    if entradas:
+        for c in entradas:
             carretera = f" [{c.carretera}]" if c.carretera else ""
-            notas = f" ({c.notas})" if c.notas else ""
+            desc = c.descripcion
+            if len(desc) > MAX_LONG_DESCRIPCION:
+                desc = desc[:MAX_LONG_DESCRIPCION] + "..."
+            lineas.append(f"- Km {c.km:.1f}: {c.tipo} - {desc}{carretera}")
+        if len(resumen.cuesheet) > len(entradas):
             lineas.append(
-                f"- Km {c.km:.1f}: {c.tipo} - {c.descripcion}{carretera}{notas}"
+                f"- ... ({len(resumen.cuesheet) - len(entradas)} entradas "
+                "de bajo impacto omitidas)"
             )
+    else:
+        lineas.append("- Sin instrucciones de navegación relevantes.")
 
     # ── Waypoints del route ──
     lineas.append("\n## WAYPOINTS DE LA RUTA")
@@ -124,13 +168,15 @@ def construir_contexto(resumen: ResumenRuta) -> str:  # noqa: C901
         for wp in resumen.puntos_route:
             desc = f" - {wp.desc}" if wp.desc else ""
             lineas.append(f"- {wp.name}{desc}")
+    else:
+        lineas.append("- Sin waypoints.")
 
     return "\n".join(lineas)
 
 
 def construir_user_prompt(resumen: ResumenRuta) -> str:
     """
-    Construye el prompt completo del usuario con el contexto GIS.
+    Construye el prompt completo del usuario con el contexto GIS compacto.
     """
     contexto = construir_contexto(resumen)
 

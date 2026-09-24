@@ -56,7 +56,7 @@ class RoutePoint:
 
 
 @dataclass
-class CueEntry:
+class CuesheetEntry:
     """Una fila del CSV Cuesheet."""
     km: float
     tipo: str                            # "girar_izq", "recto", "cambio_carretera"...
@@ -121,7 +121,7 @@ class ResumenRuta:
     fin: str = ""
     puntos_track: list = field(default_factory=list)       # List[TrackPoint]
     puntos_route: list = field(default_factory=list)       # List[RoutePoint]
-    cuesheet: list = field(default_factory=list)           # List[CueEntry]
+    cuesheet: list = field(default_factory=list)           # List[CuesheetEntry]
     puertos: list = field(default_factory=list)            # List[Climb]
     localidades: list = field(default_factory=list)        # List[Localidad]
     abastecimientos: list = field(default_factory=list)    # List[PuntoAbastecimiento]

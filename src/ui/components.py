@@ -40,20 +40,20 @@ def mostrar_perfil_elevacion(
         )
 
     # Línea de elevación
-    fig.add_trace(go.Scatter(
-        x=distancias,
-        y=elevaciones,
-        mode="lines",
-        name="Elevación",
-        line=dict(color="#2196F3", width=2),
-        fill="tozeroy",
-        fillcolor="rgba(33, 150, 243, 0.1)",
-        hovertemplate=(
-            "<b>Km %{x:.1f}</b><br>"
-            "Elevación: %{y:.0f} m<br>"
-            "<extra></extra>"
-        ),
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=distancias,
+            y=elevaciones,
+            mode="lines",
+            name="Elevación",
+            line=dict(color="#2196F3", width=2),
+            fill="tozeroy",
+            fillcolor="rgba(33, 150, 243, 0.1)",
+            hovertemplate=(
+                "<b>Km %{x:.1f}</b><br>Elevación: %{y:.0f} m<br><extra></extra>"
+            ),
+        )
+    )
 
     fig.update_layout(
         title="📈 Perfil de Elevación",
@@ -64,7 +64,7 @@ def mostrar_perfil_elevacion(
         margin=dict(l=40, r=20, t=50, b=40),
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def mostrar_mapa(
@@ -97,7 +97,10 @@ def mostrar_mapa(
     )
 
     # Capa de terreno
-    folium.TileLayer("Stamen Terrain").add_to(mapa)
+    folium.TileLayer(
+        "Stamen Terrain",
+        attr="Map tiles by Stamen Design, under CC BY 3.0. Data by OpenStreetMap.",
+    ).add_to(mapa)
 
     # Track como polilínea
     coordenadas = [[p.lat, p.lon] for p in puntos]
@@ -215,7 +218,9 @@ def mostrar_resumen(resumen: ResumenCiclista) -> None:
         st.markdown("### 🔀 Cambios de Carretera")
         for cc in resumen.cambios_carretera:
             precaucion = f" ⚠️ {cc.precaucion}" if cc.precaucion else ""
-            st.markdown(f"- Km {cc.km:.1f}: {cc.descripcion} `{cc.carretera}`{precaucion}")
+            st.markdown(
+                f"- Km {cc.km:.1f}: {cc.descripcion} `{cc.carretera}`{precaucion}"
+            )
 
     # Consejo general
     st.markdown("---")
@@ -235,7 +240,7 @@ def mostrar_descargas(resumen: ResumenCiclista) -> None:
             data=formato_txt(resumen),
             file_name="libro_ruta.txt",
             mime="text/plain",
-            use_container_width=True,
+            width="stretch",
         )
 
     with col2:
@@ -250,9 +255,7 @@ def mostrar_descargas(resumen: ResumenCiclista) -> None:
     with col3:
         st.download_button(
             label="📊 JSON",
-            data=json.dumps(
-                resumen.model_dump(), ensure_ascii=False, indent=2
-            ),
+            data=json.dumps(resumen.model_dump(), ensure_ascii=False, indent=2),
             file_name="resumen_ruta.json",
             mime="application/json",
             use_container_width=True,

@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 from src.gis.csv_parser import parse_csv_cuesheet
 from src.gis.elevation import analizar_elevacion, detectar_puertos
 from src.gis.geocoder import detectar_localidades
-from src.gis.gpx_parser import parse_gpx_route, parse_gpx_track
+from src.gis.gpx_route_parser import parse_gpx_route
+from src.gis.gpx_track_parser import parse_gpx_track
 from src.gis.models import ResumenRuta
 from src.gis.poi_finder import buscar_abastecimientos
 from src.llm.llm_client import generar_resumen_ciclista
