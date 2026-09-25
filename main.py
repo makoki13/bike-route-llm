@@ -1,4 +1,5 @@
 """
+streamlit run src/ui/app.py
 main.py — Orquestador principal del pipeline.
 Fases 2-5: GIS + LLM + Exportación.
 """
